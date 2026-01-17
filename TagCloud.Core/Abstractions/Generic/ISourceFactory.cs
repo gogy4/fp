@@ -1,6 +1,8 @@
-﻿namespace TagCloud.Abstractions.Generic;
+﻿using ErrorHandling;
+
+namespace TagCloud.Abstractions.Generic;
 
 public interface ISourceFactory<TSource>
 {
-    TSource Create(string filePath);
+    Result<TSource> Create(string filePath);
 }

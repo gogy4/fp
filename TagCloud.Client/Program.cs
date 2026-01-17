@@ -1,57 +1,30 @@
-﻿using System.Drawing;
-using Autofac;
-using TagCloud;
-using TagCloud.DI;
-using TagCloud.Models;
+﻿using ErrorHandling;
+using TagCloud.Client;
 
 public class Program
 {
     public static int Main(string[] args)
     {
-        try
-        {
-            if (args.Length < 3)
-            {
-                Console.WriteLine("не переданы аргументы");
-                return 1;
-            }
-
-            var wordsFile = args[0];
-            var stopWordsFile = args[1];
-            var outputFile = args[2];
-
-            var width = args.Length > 3 ? int.Parse(args[3]) : 1200;
-            var height = args.Length > 4 ? int.Parse(args[4]) : 800;
-            var fontName = args.Length > 5 ? args[5] : "Arial";
-
-            var builder = new ContainerBuilder();
-            builder.RegisterModule(new TagCloudModule(wordsFile, stopWordsFile));
-
-            var container = builder.Build();
-
-            var config = new TagCloudVisualizationConfig
-            {
-                CanvasWidth = width,
-                CanvasHeight = height,
-                CanvasBackgroundColor = Color.Black,
-                ShapeFillColor = Color.DarkSlateGray,
-                ShapeBorderColor = Color.White,
-                ShapeBorderThickness = 1,
-                FontName = fontName
-            };
-
-
-            using var scope = container.BeginLifetimeScope();
-            var generator = scope.Resolve<TagCloudGenerator>();
-            generator.Generate(outputFile, config);
-
-            Console.WriteLine($"Файл сохранён: {outputFile}");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Ошибка при выполнении: " + ex.Message);
-            return -1;
-        }
+        return Run(args)
+            .OnFail(err => Console.WriteLine("Ошибка: " + err))
+            .IsSuccess
+            ? 0
+            : -1;
+    }
+    
+    private static Result<None> Run(string[] args)
+    {
+        return
+            ProgramArgsValidator.ValidateArgs(args)
+                .Then(ProgramArgsValidator.ParseArgs)
+                .Then(ProgramArgsValidator.ValidateFiles)
+                .Then(ProgramArgsValidator.ValidateFont)
+                .Then(ContainerBuilderHelper.BuildContainer)
+                .Then(TagCloudGeneratorHelper.GenerateTagCloud)
+                .Then(_ =>
+                {
+                    Console.WriteLine("Генерация завершена");
+                    return None.Value;
+                });
     }
 }

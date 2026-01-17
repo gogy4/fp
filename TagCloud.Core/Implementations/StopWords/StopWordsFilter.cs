@@ -2,7 +2,7 @@
 using TagCloud.Abstractions;
 using TagCloud.Abstractions.WordsSource;
 
-namespace TagCloud.Implementations;
+namespace TagCloud.Implementations.StopWords;
 
 public class StopWordsFilter([KeyFilter("stopWords")] IWordsSource provider) : IWordFilter
 {

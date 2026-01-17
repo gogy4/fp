@@ -1,6 +1,6 @@
 ﻿using TagCloud.Abstractions;
 
-namespace TagCloud.Implementations;
+namespace TagCloud.Implementations.WordSource;
 
 public class LowercasePreprocessor : IWordPreprocessor
 {

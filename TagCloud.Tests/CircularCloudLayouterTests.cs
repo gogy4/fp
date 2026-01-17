@@ -22,16 +22,22 @@ public class CircularCloudLayouterTests
     private CircularCloudLayouter layouter;
 
     [TestCaseSource(nameof(GenerateInvalidSizes))]
-    public void PutNextRectangle_ShouldThrow_WhenSizeIsInvalid(Size size)
+    public void PutNextRectangle_ShouldFail_WhenSizeIsInvalid(Size size)
     {
-        var act = () => layouter.PutNextRectangle(size);
-        act.Should().Throw<ArgumentException>();
+        var result = layouter.PutNextRectangle(size);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("должен быть больше нуля");
     }
 
     [TestCaseSource(nameof(GenerateDifferentSizes))]
     public void PutNextRectangle_ShouldHaveCorrectSize(Size size)
     {
-        var rect = layouter.PutNextRectangle(size);
+        var result = layouter.PutNextRectangle(size);
+
+        result.IsSuccess.Should().BeTrue();
+        var rect = result.GetValueOrThrow();
+
         rect.Width.Should().Be(size.Width);
         rect.Height.Should().Be(size.Height);
     }
@@ -51,9 +57,10 @@ public class CircularCloudLayouterTests
 
         foreach (var point in expectedPoints)
         {
-            var rect = fakeLayouter.PutNextRectangle(new Size(10, 10));
-            rect.Center().Should().Be(point);
-        }
+            var result = fakeLayouter.PutNextRectangle(new Size(10, 10));
+            result.IsSuccess.Should().BeTrue();
+            var rect = result.GetValueOrThrow();
+            rect.Center().Should().Be(point);        }
 
         fakeLayouter.Rectangles.Should().HaveCount(expectedPoints.Length);
     }
@@ -61,8 +68,12 @@ public class CircularCloudLayouterTests
     [TestCaseSource(nameof(GenerateRectanglesCount))]
     public void PutNextRectangle_ShouldPlaceManyRectanglesWithoutIntersections(int count)
     {
-        for (var i = 0; i < count; i++) layouter.PutNextRectangle(new Size(10, 10));
-
+        for (var i = 0; i < count; i++)
+        {
+            var result = layouter.PutNextRectangle(new Size(10, 10));
+            result.IsSuccess.Should().BeTrue();
+        }
+        
         layouter.Rectangles.Should().HaveCount(count);
 
         foreach (var r1 in layouter.Rectangles)
@@ -73,7 +84,9 @@ public class CircularCloudLayouterTests
     [Test]
     public void PutNextRectangle_FirstRectangle_ShouldBeExactlyAtCenter()
     {
-        var rect = layouter.PutNextRectangle(new Size(10, 10));
+        var result = layouter.PutNextRectangle(new Size(10, 10));
+        result.IsSuccess.Should().BeTrue();
+        var rect = result.GetValueOrThrow();
         rect.Center().Should().Be(layouter.Center);
     }
 
@@ -117,9 +130,15 @@ public class CircularCloudLayouterTests
             fakeShifter
         );
 
-        layouterWithFake.PutNextRectangle(new Size(10, 10));
-        var rect = layouterWithFake.PutNextRectangle(new Size(10, 10));
-        rect.Center().Should().Be(freePoint);
+        var firstResult = layouterWithFake.PutNextRectangle(new Size(10, 10));
+        firstResult.IsSuccess.Should().BeTrue(); 
+        var firstRect = firstResult.GetValueOrThrow();
+
+        var secondResult = layouterWithFake.PutNextRectangle(new Size(10, 10));
+        secondResult.IsSuccess.Should().BeTrue();
+        var secondRect = secondResult.GetValueOrThrow();
+
+        secondRect.Center().Should().Be(freePoint);
     }
 
     public static IEnumerable<TestCaseData> GenerateRectanglesCount()

@@ -6,6 +6,8 @@ using TagCloud.Abstractions.Generic;
 using TagCloud.Abstractions.WordsSource;
 using TagCloud.Implementations;
 using TagCloud.Implementations.Generics;
+using TagCloud.Implementations.StopWords;
+using TagCloud.Implementations.WordSource;
 
 namespace TagCloud.DI;
 
@@ -35,18 +37,24 @@ public class TagCloudModule(string wordsFile, string stopWordsFile) : Module
         builder.Register(ctx =>
             {
                 var factory = ctx.Resolve<ISourceFactory<IWordsSource>>();
-                return factory.Create(wordsFile);
+                return factory
+                    .Create(wordsFile)
+                    .GetValueOrThrow();
             })
             .Keyed<IWordsSource>("words")
-            .SingleInstance(); 
+            .SingleInstance();
+
 
         builder.Register(ctx =>
             {
                 var factory = ctx.Resolve<ISourceFactory<IWordsSource>>();
-                return factory.Create(stopWordsFile);
+                return factory
+                    .Create(stopWordsFile)
+                    .GetValueOrThrow();
             })
             .Keyed<IWordsSource>("stopWords")
             .SingleInstance();
+
         
         builder.Register<Func<ITagPlacer>>(ctx =>
             {

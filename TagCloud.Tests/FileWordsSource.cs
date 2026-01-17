@@ -1,5 +1,6 @@
 ﻿using FluentAssertions;
 using TagCloud.Implementations;
+using TagCloud.Implementations.WordSource;
 
 namespace TagCloud.Tests;
 
