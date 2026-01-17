@@ -1,7 +1,7 @@
 ﻿using TagCloud.Abstractions.Generic;
 using TagCloud.Abstractions.WordsSource;
 
-namespace TagCloud.Implementations;
+namespace TagCloud.Implementations.WordSource;
 
 public class TxtWordsSource(string filePath) : TxtFileProviderBase(filePath), IWordsSource
 {

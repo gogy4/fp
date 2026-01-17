@@ -1,6 +1,7 @@
 ﻿using System.Drawing;
 using Autofac;
 using FluentAssertions;
+using TagCloud;
 using TagCloud.DI;
 using TagCloud.Models;
 
@@ -9,6 +10,10 @@ namespace TagCloud.Tests;
 [TestFixture]
 public class TagCloudIntegrationTests
 {
+    private string baseDir;
+    private string outputPath;
+    private TagCloudVisualizationConfig cfg;
+
     [SetUp]
     public void SetUp()
     {
@@ -16,11 +21,10 @@ public class TagCloudIntegrationTests
             TestContext.CurrentContext.TestDirectory,
             "..", "..", ".."
         ));
-        wordsPath = Path.Combine(baseDir, "testwords.txt");
-        stopwordsPath = Path.Combine(baseDir, "teststopwords.txt");
 
         var testName = TestContext.CurrentContext.Test.Name;
         outputPath = Path.Combine(baseDir, $"cloud_{testName}.png");
+
         cfg = new TagCloudVisualizationConfig
         {
             CanvasWidth = 800,
@@ -29,32 +33,19 @@ public class TagCloudIntegrationTests
             ShapeBorderColor = Color.White
         };
 
-        if (File.Exists(outputPath)) File.Delete(outputPath);
-
-        File.WriteAllText(wordsPath, "");
-        File.WriteAllText(stopwordsPath, "");
+        if (File.Exists(outputPath))
+            File.Delete(outputPath);
     }
 
-    private string wordsPath;
-    private string stopwordsPath;
-    private string outputPath;
-    private TagCloudVisualizationConfig cfg;
-    private string baseDir;
-
-
-    private TagCloudGenerator Resolve(string words = null, string stopwords = null, bool writeFile = true)
+    private TagCloudGenerator Resolve(string words, string stopwords)
     {
         var testName = TestContext.CurrentContext.Test.Name;
 
-        // уникальные файлы для каждого теста
         var wordsFile = Path.Combine(baseDir, $"words_{testName}.txt");
         var stopwordsFile = Path.Combine(baseDir, $"stopwords_{testName}.txt");
 
-        if (writeFile)
-        {
-            File.WriteAllLines(wordsFile, (words ?? "").Split('\n'));
-            File.WriteAllLines(stopwordsFile, (stopwords ?? "").Split('\n'));
-        }
+        File.WriteAllLines(wordsFile, (words ?? "").Split('\n'));
+        File.WriteAllLines(stopwordsFile, (stopwords ?? "").Split('\n'));
 
         var builder = new ContainerBuilder();
         builder.RegisterModule(new TagCloudModule(wordsFile, stopwordsFile));
@@ -62,122 +53,97 @@ public class TagCloudIntegrationTests
         var container = builder.Build();
         return container.Resolve<TagCloudGenerator>();
     }
-
-
+    
     [Test]
     public void Generate_ShouldReadWordsAndStopwordsFromFiles()
     {
-        var gen = Resolve(wordsPath, stopwordsPath, false);
-        var act = () => gen.Generate(outputPath, cfg);
-        act.Should().NotThrow("reading from test files should work");
-        File.Exists(outputPath).Should().BeTrue("output image must be created");
-        new FileInfo(outputPath).Length.Should().BeGreaterThan(50, "image must not be empty");
+        var words = "apple\nbanana\nbanana\ncloud";
+        var stopwords = "apple";
+
+        var gen = Resolve(words, stopwords);
+
+        var result = gen.Generate(outputPath, cfg);
+
+        result.IsSuccess.Should().BeTrue("чтение слов и генерация должны пройти успешно");
+
+        File.Exists(outputPath).Should().BeTrue("файл изображения должен быть создан");
+        new FileInfo(outputPath).Length.Should().BeGreaterThan(50, "изображение не должно быть пустым");
     }
-
-
+    
     [TestCaseSource(nameof(GetGenerationCases))]
     public void Generate_ShouldBehaveAsExpected(string words, string stop, bool shouldSucceed)
     {
         var gen = Resolve(words, stop);
 
-        var act = () => gen.Generate(outputPath, cfg);
+        var result = gen.Generate(outputPath, cfg);
 
         if (shouldSucceed)
         {
-            act.Should().NotThrow("должно успешно создать изображение");
+            result.IsSuccess.Should().BeTrue("ожидалась успешная генерация");
+
             File.Exists(outputPath).Should().BeTrue("файл должен быть создан");
             new FileInfo(outputPath).Length.Should().BeGreaterThan(50, "картинка не должна быть пустой");
         }
         else
         {
-            act.Should()
-                .Throw<InvalidOperationException>()
-                .WithMessage("No words to render after preprocessing/filtering.");
+            result.IsSuccess.Should().BeFalse("ожидалась ошибка генерации");
+            result.Error.Should().NotBeNullOrWhiteSpace();
         }
     }
 
-    [TestCaseSource(nameof(GetErrorCases))]
-    public void Generate_ShouldThrow_OnInvalidOutputPath(string words, string stop, string badPath)
+    [TestCaseSource(nameof(GetInvalidPathCases))]
+    public void Generate_ShouldFail_OnInvalidOutputPath(string badPath)
     {
-        var gen = Resolve(words, stop);
+        var gen = Resolve("word\nword\ncloud", "");
 
-        var act = () => gen.Generate(badPath, cfg);
+        var result = gen.Generate(badPath, cfg);
 
-        act.Should()
-            .Throw<Exception>("генерация невозможна при неверном пути файла");
+        result.IsSuccess.Should().BeFalse("некорректный путь должен приводить к ошибке");
+        result.Error.Should().NotBeNullOrWhiteSpace();
     }
 
-    public static IEnumerable<TestCaseData> GetErrorCases()
+    public static IEnumerable<TestCaseData> GetInvalidPathCases()
     {
-        yield return new TestCaseData(
-                "word",
-                "",
-                null)
-            .SetName("Generate_ShouldThrow_WhenOutputPathIsNull")
-            .SetDescription("outputPath = null → should throw an exception");
+        yield return new TestCaseData(null)
+            .SetName("Generate_ShouldFail_WhenOutputPathIsNull");
 
-        yield return new TestCaseData(
-                "word",
-                "",
-                "   ")
-            .SetName("Generate_ShouldThrow_WhenOutputPathIsWhitespace")
-            .SetDescription("output path containing only whitespace → should throw an exception");
+        yield return new TestCaseData("   ")
+            .SetName("Generate_ShouldFail_WhenOutputPathIsWhitespace");
 
-        yield return new TestCaseData(
-                "word",
-                "",
-                "invalid/file\\path.png")
-            .SetName("Generate_ShouldThrow_WhenOutputPathInvalid")
-            .SetDescription("invalid output file path → should throw an exception");
+        yield return new TestCaseData("invalid/file\\path.png")
+            .SetName("Generate_ShouldFail_WhenOutputPathInvalid");
     }
 
     public static IEnumerable<TestCaseData> GetGenerationCases()
     {
         yield return new TestCaseData(
-                "apple\napple\nbanana\nbanana\nbanana\nsky\nsky\nsky\ncloud\ncloud\n" +
-                "cloud\ncloud\nhello\nhello\nhello\nworld\nworld\nworld\nworld\nworld\n" +
-                "rain\nrain\nrain\nrain\nrain\nrain\nflower\nflower\nflower\nflower\nf" +
-                "lower\nsun\nsun\nsun\nsun\nsun\nmoon\nmoon\nmoon\nmoon\nmoon\nmoon\n" +
-                "star\nstar\nstar\nstar\nstar\nstar\nstar\ntree\ntree\ntree\ntree\ntr" +
-                "ee\ntree\ntree\ntree\nriver\nriver\nriver\nriver\nriver\nriver\nmoun" +
-                "tain\nmountain\nmountain\nmountain\nmountain\nmountain\nmountain\nmou" +
-                "ntain\nmountain\nwind\nwind\nwind\nwind\nwind\nwind\nwind\nwind\nwin" +
-                "d\nwind\nstone\nstone\nstone\nstone\nstone\nstone\nstone\nstone\nston" +
-                "e\nfire\nfire\nfire\nfire\nfire\nfire\nfire\nfire\nfire\nfire\ncloudy" +
-                "\ncloudy\ncloudy\ncloudy\ncloudy\ncloudy\ncloudy\ncloudy\ncloudy\nclou" +
-                "dy\nrainbow\nrainbow\nrainbow\nrainbow\nrainbow\nrainbow\nrainbow\nrainbo" +
-                "w\nrainbow\nrainbow\nleaf\nleaf\nleaf\nleaf\nleaf\nleaf\nleaf\nleaf\nleaf\nleaf",
-                "hello\nthe\nand\na\nof\nin\non\nat\nfor\nrain\nsun",
+                "apple\napple\nbanana\nbanana\nbanana\ncloud\ncloud\ncloud",
+                "",
                 true)
-            .SetName("Generate_ShouldProduceImage_WhenStopwordsEmpty")
-            .SetDescription("Verifies successful image generation when no stopwords are provided.");
+            .SetName("Generate_ShouldSucceed_WhenStopwordsEmpty");
 
         yield return new TestCaseData(
                 "apple\nbanana\norange",
                 "banana",
                 true)
-            .SetName("Generate_ShouldFilterStopwordsAndProduceImage")
-            .SetDescription("Stopwords should be filtered out and the image should still be generated.");
+            .SetName("Generate_ShouldFilterStopwords");
 
         yield return new TestCaseData(
                 "one\nTWO\nthree\nTwo",
                 "two",
                 true)
-            .SetName("Generate_ShouldBeCaseInsensitiveForStopwords")
-            .SetDescription("Stopword 'two' should filter out 'TWO' and 'Two' (case-insensitive).");
+            .SetName("Generate_ShouldBeCaseInsensitiveForStopwords");
 
         yield return new TestCaseData(
                 "",
                 "",
                 false)
-            .SetName("Generate_ShouldFail_WhenNoWordsProvided")
-            .SetDescription("An error is expected when the words file is empty.");
+            .SetName("Generate_ShouldFail_WhenNoWordsProvided");
 
         yield return new TestCaseData(
                 "a\nb\nc",
                 "a\nb\nc",
                 false)
-            .SetName("Generate_ShouldFail_WhenAllWordsFilteredOut")
-            .SetDescription("All words are filtered out, so the generator should throw an error.");
+            .SetName("Generate_ShouldFail_WhenAllWordsFilteredOut");
     }
 }

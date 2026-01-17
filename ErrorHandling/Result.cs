@@ -1,13 +1,15 @@
 ﻿using System;
+using System.Linq.Expressions;
 
 namespace ErrorHandling;
 
 public class None
 {
-    private None()
-    {
-    }
+    private None() { }
+
+    public static readonly None Value = new None();
 }
+
 
 public struct Result<T>
 {
@@ -22,8 +24,7 @@ public struct Result<T>
 
     public T GetValueOrThrow()
     {
-        if (IsSuccess) return Value;
-        throw new InvalidOperationException($"No value. Only Error {Error}");
+        return IsSuccess ? Value : throw new InvalidOperationException($"No value. Only Error {Error}");
     }
 
     public bool IsSuccess => Error == null;
@@ -62,20 +63,33 @@ public static class Result
         this Result<TInput> input,
         Func<TInput, TOutput> continuation)
     {
-        throw new NotImplementedException();
+        return !input.IsSuccess ? Fail<TOutput>(input.Error) : Of(() => continuation(input.Value), input.Error);
     }
 
     public static Result<TOutput> Then<TInput, TOutput>(
         this Result<TInput> input,
         Func<TInput, Result<TOutput>> continuation)
     {
-        throw new NotImplementedException();
+        return !input.IsSuccess ? Fail<TOutput>(input.Error) : Of(() => continuation(input.Value), input.Error).Value;
     }
 
-    public static Result<TInput> OnFail<TInput>(
-        this Result<TInput> input,
-        Action<string> handleError)
+    public static Result<TInput> ReplaceError<TInput>(this Result<TInput> input, Func<string, string> replacement)
     {
-        throw new NotImplementedException();
+        return input.IsSuccess ? input : Fail<TInput>(replacement(input.Error));;
+    }
+
+    public static Result<TInput> RefineError<TInput>(this Result<TInput> input, string refineErrorMessage)
+    {
+        return ReplaceError(input, err => $"{refineErrorMessage}. {input.Error}");
+    }
+
+    public static Result<TInput> OnFail<TInput>(this Result<TInput> input, Action<string> handleError)
+    {
+        if (!input.IsSuccess)
+        {
+            handleError(input.Error);
+        }
+
+        return input;
     }
 }
